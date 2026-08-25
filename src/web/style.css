@@ -150,6 +150,13 @@ body {
   max-width: 250px;
 }
 
+.form-select.method-select {
+  max-width: 320px;
+  background: #141b2d;
+  border-color: #3b82f6;
+  font-weight: 500;
+}
+
 .form-select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-glow);

@@ -180,6 +180,7 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/detect":
             filename = req_json.get("filename")
+            method = req_json.get("method", "smart")
             if not filename:
                 self._send_json({"error": "نام فایل اسکن مشخص نشده است"}, 400)
                 return
@@ -194,11 +195,15 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
                 self._send_json({"error": "عدم امکان باز کردن فایل تصویر"}, 500)
                 return
 
+            import time
+            t_start = time.perf_counter()
+
             h_img, w_img = img.shape[:2]
 
-            # Detect QR codes
-            qr_list = extract_qr_codes(img)
-            
+            # Detect QR codes using chosen method
+            qr_list = extract_qr_codes(img, method=method)
+            elapsed_ms = round((time.perf_counter() - t_start) * 1000, 1)
+
             # Sort QR codes logically (top to bottom, right to left)
             qr_list.sort(key=lambda item: (round(item["qr_rect"][1] / 200.0) * 200, item["qr_rect"][0]))
 
@@ -221,6 +226,8 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
 
             self._send_json({
                 "filename": filename,
+                "method": method,
+                "elapsedMs": elapsed_ms,
                 "imageWidth": w_img,
                 "imageHeight": h_img,
                 "items": items,

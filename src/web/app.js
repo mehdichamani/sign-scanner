@@ -64,6 +64,7 @@ const elements = {
 
   // Extractor Elements
   scanSelect: document.getElementById('scanSelect'),
+  detectMethodSelect: document.getElementById('detectMethodSelect'),
   btnReloadScans: document.getElementById('btnReloadScans'),
   btnDetect: document.getElementById('btnDetect'),
   btnSaveAll: document.getElementById('btnSaveAll'),
@@ -419,14 +420,17 @@ async function selectScan(filename) {
 
 async function detectBoxes() {
   if (!state.selectedScan) return;
-  setStatus('در حال آنالیز هوشمند، خواندن بارکدها و استخراج کادرها...');
-  showToast('در حال اسکن و تشخیص خودکار امضاها...', 'info');
+  const method = elements.detectMethodSelect ? elements.detectMethodSelect.value : 'smart';
+  const methodLabel = elements.detectMethodSelect ? elements.detectMethodSelect.options[elements.detectMethodSelect.selectedIndex].text : '';
+
+  setStatus(`در حال آنالیز (${methodLabel})...`);
+  showToast('در حال اسکن و تشخیص کادرها با متد انتخابی...', 'info');
 
   try {
     const res = await fetch('/api/detect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: state.selectedScan })
+      body: JSON.stringify({ filename: state.selectedScan, method: method })
     });
     const data = await res.json();
 
@@ -439,8 +443,10 @@ async function detectBoxes() {
     state.items = data.items || [];
     renderItemsList();
     renderOverlay();
-    setStatus(`تشخیص انجام شد: ${data.totalQrFound} بارکد و ${data.totalBoxesFound} کادر امضا`);
-    showToast(`تعداد ${state.items.length} کادر امضا با موفقیت شناسایی شد`, 'success');
+    
+    const timeStr = data.elapsedMs ? ` (زمان: ${data.elapsedMs} میلی‌ثانیه)` : '';
+    setStatus(`تشخیص انجام شد: ${data.totalQrFound} بارکد و ${data.totalBoxesFound} کادر امضا${timeStr}`);
+    showToast(`تعداد ${state.items.length} کادر امضا شناسایی شد${timeStr}`, 'success');
 
     if (state.items.length > 0) {
       selectItem(state.items[0].id);

@@ -40,6 +40,20 @@
           </select>
         </div>
 
+        <!-- Detection Method / Pass Selector -->
+        <div class="select-wrapper">
+          <label for="detectMethodSelect" title="انتخاب روش و اولویت تشخیص">الگوریتم تشخیص:</label>
+          <select id="detectMethodSelect" class="form-select method-select">
+            <option value="smart" selected>⚡ اولویت هوشمند ترکیبی (پیشنهادی - ۱۰۰٪ سریع و دقیق)</option>
+            <option value="pass1_scale_half">۱️⃣ اولویت ۱: کوچک‌شده 0.5x (فوق‌العاده سریع ~100ms)</option>
+            <option value="pass2_direct">۲️⃣ اولویت ۲: مستقیم Grayscale 1.0x (~300ms)</option>
+            <option value="pass3_threshold">۳️⃣ اولویت ۳: با ۳ آستانه Binarize (~800ms)</option>
+            <option value="pass4_multi_scale">۴️⃣ اولویت ۴: تغییر مقیاس ۴ مرحله‌ای (~1800ms)</option>
+            <option value="pass5_opencv">۵️⃣ اولویت ۵: موتور OpenCV Multi-Scale (~900ms)</option>
+            <option value="all_passes">🔍 ترکیب تمام روش‌ها (جامع و سنگین)</option>
+          </select>
+        </div>
+
         <button id="btnReloadScans" class="btn btn-secondary" title="بروزرسانی لیست اسکن‌ها">
           🔄
         </button>
