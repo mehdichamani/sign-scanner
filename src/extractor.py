@@ -123,6 +123,32 @@ def find_signature_boxes(img: np.ndarray):
     return unique_boxes
 
 
+def get_box_for_qr(qr_rect: tuple, img_shape: tuple) -> tuple:
+    """Compute exact 300DPI signature box crop rectangle anchored to the QR code position."""
+    qx, qy, qw, qh = qr_rect
+    h_img, w_img = img_shape[:2]
+
+    # In 300DPI standard sheet (2550x3507) with 3x4 grid:
+    # QR is at top-left of cell.
+    # Signature box width is ~705px, height is ~622px.
+    # Box offset from QR top-left: dx ≈ +24px, dy ≈ +212px.
+    # We dynamically scale offsets if image resolution differs from standard 2550x3507.
+    scale_x = w_img / 2550.0
+    scale_y = h_img / 3507.0
+
+    target_bw = int(650 * scale_x)
+    target_bh = int(580 * scale_y)
+    offset_x = int(18 * scale_x)
+    offset_y = int(177 * scale_y)
+
+    bx = max(0, qx + offset_x)
+    by = max(0, qy + offset_y)
+    bw = min(target_bw, w_img - bx)
+    bh = min(target_bh, h_img - by)
+
+    return (bx, by, bw, bh)
+
+
 def process_scanned_file(
     image_path: str, output_dir=SIGNATURES_OUTPUT_DIR, debug: bool = True
 ) -> int:
@@ -151,44 +177,16 @@ def process_scanned_file(
             print(f"⚠️ [دیباگ] هیچ کد QR در فایل '{Path(image_path).name}' خوانده نشد.")
         return 0
 
-    # Step 2: Detect signature boxes
-    boxes = find_signature_boxes(img)
-    matched_results = []
-    seen_codes = set()
+    # Step 2: Sort QR codes logically by row and column (Top to Bottom, Right to Left)
+    # Row threshold approx 200px
+    qr_list.sort(key=lambda item: (round(item["qr_rect"][1] / 200.0) * 200, item["qr_rect"][0]))
 
-    # Step 3: Match each QR code to its box or approximate signature area
+    # Step 3: Match each QR code directly to its signature box anchored to QR
+    matched_results = []
     for q in qr_list:
         code = q["code"]
-        qx, qy, qw, qh = q["qr_rect"]
-
-        # Search for a signature box positioned right below this QR code
-        best_box = None
-        min_dist = float("inf")
-
-        for (bx, by, bw, bh) in boxes:
-            # The signature box should be below the QR and aligned horizontally
-            dx = abs((bx + bw / 2) - (qx + qw * 2.5))  # QR is at top-left of cell
-            dy = by - (qy + qh)
-            if -30 <= dy <= qh * 4 and abs(bx - qx) < qw * 5:
-                dist = abs(dx) + abs(dy)
-                if dist < min_dist:
-                    min_dist = dist
-                    best_box = (bx, by, bw, bh)
-
-        if best_box is not None:
-            seen_codes.add(code)
-            matched_results.append((code, best_box))
-        else:
-            # Fallback estimation based on QR geometry
-            bx = max(0, qx + int(qw * 0.1))
-            by = int(qy + qh * 1.35)
-            bw = int(qw * 4.8)
-            bh = int(qh * 4.3)
-            # Ensure within image bounds
-            bw = min(bw, w_img - bx)
-            bh = min(bh, h_img - by)
-            seen_codes.add(code)
-            matched_results.append((code, (bx, by, bw, bh)))
+        box_rect = get_box_for_qr(q["qr_rect"], img.shape)
+        matched_results.append((code, box_rect))
 
     # Step 4: Extract and save signatures
     extracted_count = 0

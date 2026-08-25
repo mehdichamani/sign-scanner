@@ -19,7 +19,7 @@ from src.config import (
     DEFAULT_CSV_PATH,
     DEFAULT_PDF_PATH,
 )
-from src.extractor import extract_qr_codes, find_signature_boxes, remove_background
+from src.extractor import extract_qr_codes, get_box_for_qr, remove_background
 from src.generator import generate_pdf
 
 WEB_STATIC_DIR = Path(__file__).parent / "web"
@@ -198,71 +198,26 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
 
             # Detect QR codes
             qr_list = extract_qr_codes(img)
-            # Detect contours
-            boxes = find_signature_boxes(img)
+            
+            # Sort QR codes logically (top to bottom, right to left)
+            qr_list.sort(key=lambda item: (round(item["qr_rect"][1] / 200.0) * 200, item["qr_rect"][0]))
 
             items = []
-            assigned_boxes = set()
-
-            # Match QR codes to nearest box or geometry
             for idx, q in enumerate(qr_list):
                 code = q["code"]
                 qx, qy, qw, qh = q["qr_rect"]
-
-                best_box = None
-                min_dist = float("inf")
-
-                for b_idx, (bx, by, bw, bh) in enumerate(boxes):
-                    if b_idx in assigned_boxes:
-                        continue
-                    dx = abs((bx + bw / 2) - (qx + qw * 2.5))
-                    dy = by - (qy + qh)
-                    if -30 <= dy <= qh * 4 and abs(bx - qx) < qw * 5:
-                        dist = abs(dx) + abs(dy)
-                        if dist < min_dist:
-                            min_dist = dist
-                            best_box = (bx, by, bw, bh)
-                            best_b_idx = b_idx
-
-                if best_box is not None:
-                    assigned_boxes.add(best_b_idx)
-                    bx, by, bw, bh = best_box
-                    matched_type = "box_contour"
-                else:
-                    matched_type = "geometry_fallback"
-                    bx = max(0, qx + int(qw * 0.1))
-                    by = int(qy + qh * 1.35)
-                    bw = int(qw * 4.8)
-                    bh = int(qh * 4.3)
-                    bw = min(bw, w_img - bx)
-                    bh = min(bh, h_img - by)
+                bx, by, bw, bh = get_box_for_qr(q["qr_rect"], img.shape)
 
                 items.append({
                     "id": f"item_{idx + 1}",
                     "empCode": code,
                     "qrRect": {"x": qx, "y": qy, "w": qw, "h": qh},
                     "cropRect": {"x": bx, "y": by, "w": bw, "h": bh},
-                    "matchedType": matched_type,
+                    "matchedType": "qr_anchor",
                     "threshold": 200,
                     "padding": 6,
                     "confirmed": True
                 })
-
-            # Check remaining unassigned boxes
-            unassigned_count = 0
-            for b_idx, (bx, by, bw, bh) in enumerate(boxes):
-                if b_idx not in assigned_boxes:
-                    unassigned_count += 1
-                    items.append({
-                        "id": f"extra_{unassigned_count}",
-                        "empCode": f"UNKNOWN_{unassigned_count}",
-                        "qrRect": None,
-                        "cropRect": {"x": bx, "y": by, "w": bw, "h": bh},
-                        "matchedType": "unassigned_box",
-                        "threshold": 200,
-                        "padding": 6,
-                        "confirmed": False
-                    })
 
             self._send_json({
                 "filename": filename,
@@ -270,7 +225,7 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
                 "imageHeight": h_img,
                 "items": items,
                 "totalQrFound": len(qr_list),
-                "totalBoxesFound": len(boxes)
+                "totalBoxesFound": len(items)
             })
             return
 
