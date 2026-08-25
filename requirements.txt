@@ -1,0 +1,10 @@
+reportlab
+pillow
+opencv-python
+numpy
+pandas
+arabic-reshaper
+python-bidi
+qrcode
+pyzbar
+rich

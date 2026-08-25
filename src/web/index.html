@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Scanner Pro - سامانه هوشمند تولید برگه و استخراج امضا</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="logo-icon">✍️</div>
+        <div>
+          <h1 class="app-title">Sign Scanner Pro</h1>
+          <p class="app-subtitle">سامانه یکپارچه تولید برگه PDF، پیش‌نمایش و استخراج هوشمند امضا</p>
+        </div>
+      </div>
+
+      <!-- Navigation Modules Switcher -->
+      <nav class="nav-modules">
+        <button id="navTabGenerate" class="nav-tab-btn" data-target="view-generator">
+          <span class="tab-icon">📄</span> تولید برگه امضا (PDF)
+        </button>
+        <button id="navTabExtract" class="nav-tab-btn active" data-target="view-extractor">
+          <span class="tab-icon">🎯</span> استخراج و برش هوشمند امضا
+        </button>
+      </nav>
+
+      <div class="header-actions" id="extractorHeaderActions">
+        <!-- Scan Selector -->
+        <div class="select-wrapper">
+          <label for="scanSelect">برگه اسکن:</label>
+          <select id="scanSelect" class="form-select">
+            <option value="">در حال بارگذاری اسکن‌ها...</option>
+          </select>
+        </div>
+
+        <button id="btnReloadScans" class="btn btn-secondary" title="بروزرسانی لیست اسکن‌ها">
+          🔄
+        </button>
+
+        <button id="btnDetect" class="btn btn-primary">
+          <span class="btn-icon">⚡</span> تشخیص خودکار
+        </button>
+
+        <button id="btnSaveAll" class="btn btn-success">
+          <span class="btn-icon">💾</span> ذخیره تمام امضاها
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Views Container -->
+    <div class="main-content-area">
+      
+      <!-- ================= MODULE 1: PDF GENERATOR ================= -->
+      <section id="view-generator" class="module-view" style="display: none;">
+        <div class="generator-container">
+          
+          <!-- Generator Sidebar / Controls -->
+          <div class="generator-sidebar">
+            <div class="card gen-card">
+              <h3>⚙️ تنظیمات و عملیات تولید</h3>
+              <p class="card-desc">فایل CSV پرسنل را بارگذاری کنید یا اطلاعات را مستقیماً در جدول ویرایش کنید.</p>
+              
+              <div class="gen-action-group">
+                <input type="file" id="fileCsvInput" accept=".csv" style="display: none;" />
+                <button id="btnUploadCsv" class="btn btn-secondary btn-block">
+                  📂 بارگذاری فایل CSV جدید
+                </button>
+                <button id="btnResetSample" class="btn btn-outline btn-block">
+                  🔄 بارگذاری نمونه پیش‌فرض
+                </button>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="stats-box">
+                <div class="stat-item">
+                  <span class="stat-label">تعداد پرسنل:</span>
+                  <span id="genEmpCount" class="stat-value">۰</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">تعداد واحدها:</span>
+                  <span id="genDeptCount" class="stat-value">۰</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">تخمین تعداد برگه A4:</span>
+                  <span id="genPageCount" class="stat-value">۰</span>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <button id="btnGeneratePdf" class="btn btn-primary btn-block btn-lg">
+                <span class="btn-icon">✨</span> تولید و ایجاد فایل PDF
+              </button>
+
+              <div id="pdfSuccessCard" class="pdf-download-card" style="display: none;">
+                <div class="pdf-card-header">
+                  <span class="badge badge-success">✓ برگه با موفقیت تولید شد</span>
+                </div>
+                <a id="btnDownloadPdf" href="/api/download-pdf" target="_blank" class="btn btn-success btn-block">
+                  📥 مشاهده و دانلود فایل PDF
+                </a>
+              </div>
+            </div>
+
+            <!-- Quick Add Employee -->
+            <div class="card gen-card">
+              <h4>➕ افزودن پرسنل جدید</h4>
+              <div class="form-group">
+                <label>کد پرسنلی:</label>
+                <input type="text" id="addEmpCode" class="form-input" placeholder="مثال: 6035100" />
+              </div>
+              <div class="form-group">
+                <label>نام و نام خانوادگی:</label>
+                <input type="text" id="addEmpName" class="form-input" placeholder="مثال: علی محمدی" />
+              </div>
+              <div class="form-group">
+                <label>واحد / دپارتمان:</label>
+                <input type="text" id="addEmpDept" class="form-input" placeholder="مثال: انفورماتیک" />
+              </div>
+              <button id="btnAddEmployee" class="btn btn-secondary btn-block">
+                ➕ درج در جدول
+              </button>
+            </div>
+          </div>
+
+          <!-- Generator Main: Table View -->
+          <div class="generator-main">
+            <div class="gen-table-header">
+              <div class="table-title">
+                <h3>📋 لیست پرسنل جهت تولید برگه امضا</h3>
+                <span class="sub-text">می‌توانید اطلاعات هر ردیف را به صورت زنده تغییر دهید.</span>
+              </div>
+              <div class="table-actions">
+                <input type="text" id="searchEmpTable" class="form-input" placeholder="🔍 جستجو در پرسنل..." />
+                <button id="btnClearTable" class="btn btn-danger btn-xs" title="حذف تمام ردیف‌ها">پاکسازی جدول</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table" id="employeesTable">
+                <thead>
+                  <tr>
+                    <th style="width: 50px;">ردیف</th>
+                    <th style="width: 150px;">کد پرسنلی</th>
+                    <th>نام کامل</th>
+                    <th>واحد سازمانی</th>
+                    <th style="width: 80px;">عملیات</th>
+                  </tr>
+                </thead>
+                <tbody id="employeesTableBody">
+                  <tr>
+                    <td colspan="5" class="table-loading">در حال بارگذاری اطلاعات پرسنل...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= MODULE 2: SIGNATURE EXTRACTOR ================= -->
+      <section id="view-extractor" class="module-view workspace">
+        <!-- Left Sidebar: Signatures List -->
+        <aside class="sidebar-items" id="sidebarList">
+          <div class="sidebar-header">
+            <h3>لیست امضاها (<span id="itemCount">0</span>)</h3>
+            <div class="sidebar-actions">
+              <button id="btnAddBox" class="btn btn-xs btn-outline" title="افزودن کادر دستی">
+                ➕ کادر جدید
+              </button>
+            </div>
+          </div>
+          
+          <div class="items-list" id="itemsContainer">
+            <div class="empty-state">
+              <p>هنوز برگه‌ای انتخاب یا اسکن نشده است.</p>
+              <span>یک اسکن را انتخاب کرده و دکمه «تشخیص خودکار» را بزنید.</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Center: Interactive Canvas Document Viewer -->
+        <main class="canvas-viewport" id="viewport">
+          <!-- Canvas Toolbar -->
+          <div class="canvas-toolbar">
+            <div class="tool-group">
+              <button id="btnZoomIn" class="tool-btn" title="بزرگنمایی (Zoom In)">🔍➕</button>
+              <button id="btnZoomOut" class="tool-btn" title="کوچک‌نمایی (Zoom Out)">🔍➖</button>
+              <button id="btnZoomFit" class="tool-btn" title="تطبیق با صفحه">Fit</button>
+              <button id="btnZoom100" class="tool-btn" title="اندازه ۱۰۰٪">100%</button>
+              <span id="zoomLevel" class="zoom-indicator">100%</span>
+            </div>
+
+            <div class="tool-divider"></div>
+
+            <div class="tool-group">
+              <button id="btnToolSelect" class="tool-btn active" title="حالت انتخاب و تغییر سایز">
+                ✋ انتخاب و جابجایی
+              </button>
+              <button id="btnToolDraw" class="tool-btn" title="ترسیم کادر جدید">
+                ✏️ رسم کادر دستی
+              </button>
+            </div>
+
+            <div class="tool-divider"></div>
+
+            <div class="tool-group">
+              <label class="toggle-switch" title="نمایش کادر بارکدهای QR">
+                <input type="checkbox" id="chkShowQr" checked>
+                <span class="slider"></span>
+                <span class="toggle-label">نمایش QR</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Canvas Container -->
+          <div class="canvas-scroll-container" id="canvasScrollArea">
+            <div class="canvas-wrapper" id="canvasWrapper">
+              <img id="documentImage" alt="Scanned Document">
+              <canvas id="overlayCanvas"></canvas>
+              <div id="boxHandlesLayer" class="box-handles-layer"></div>
+            </div>
+          </div>
+
+          <!-- Floating Info Bar -->
+          <div class="viewport-footer">
+            <div id="statusMessage" class="status-msg">آماده به کار</div>
+            <div class="canvas-hint">💡 برای جابجایی برگه: کلید فضا (Space) + درگ ماوس | چرخش چرخ ماوس برای زوم</div>
+          </div>
+        </main>
+
+        <!-- Right Sidebar: Live Preview & Settings -->
+        <aside class="sidebar-preview" id="sidebarPreview">
+          <div class="sidebar-header">
+            <h3>پیش‌نمایش برش امضا</h3>
+          </div>
+
+          <div class="preview-panel-content">
+            <!-- Selected Box Info -->
+            <div class="card box-info-card" id="selectedBoxInfo">
+              <div class="card-row">
+                <span class="label">کد پرسنلی:</span>
+                <input type="text" id="inputEmpCode" class="form-input code-input" placeholder="مثال: 980123" />
+              </div>
+              <div class="card-row coords-row">
+                <span class="dim-text">موقعیت:</span>
+                <span id="coordsDisplay" class="mono-badge">X: 0, Y: 0 (0x0)</span>
+              </div>
+            </div>
+
+            <!-- Live Transparent Preview -->
+            <div class="preview-box">
+              <div class="preview-tabs">
+                <button class="preview-tab active" data-tab="trans">خروجی شفاف (PNG)</button>
+                <button class="preview-tab" data-tab="raw">برش خام اسکن</button>
+              </div>
+              
+              <div class="preview-canvas-container checkerboard" id="previewContainer">
+                <img id="imgTransPreview" class="preview-image" alt="Transparent Preview" />
+                <img id="imgRawPreview" class="preview-image" alt="Raw Preview" style="display: none;" />
+                <div id="previewLoader" class="preview-loader" style="display: none;">
+                  <div class="spinner"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Adjustments & Filters -->
+            <div class="card adjustment-card">
+              <h4>🎛️ تنظیمات و فیلترها</h4>
+              
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label for="rangeThreshold">حساسیت حذف پس‌زمینه (آستانه):</label>
+                  <span id="valThreshold" class="slider-val">200</span>
+                </div>
+                <input type="range" id="rangeThreshold" min="100" max="250" value="200" class="range-slider" />
+                <div class="slider-ticks">
+                  <span>تیره‌تر</span>
+                  <span>متعادل (۲۰۰)</span>
+                  <span>روشن‌تر</span>
+                </div>
+              </div>
+
+              <div class="slider-group">
+                <div class="slider-header">
+                  <label for="rangePadding">فاصله حاشیه کادر (Padding):</label>
+                  <span id="valPadding" class="slider-val">6px</span>
+                </div>
+                <input type="range" id="rangePadding" min="0" max="25" value="6" class="range-slider" />
+              </div>
+
+              <div class="btn-row">
+                <button id="btnApplyAllThreshold" class="btn btn-xs btn-outline" title="اعمال این حساسیت به تمام امضاها">
+                  اعمال این تنظیمات به همه
+                </button>
+              </div>
+            </div>
+
+            <!-- Action Buttons for Selected Item -->
+            <div class="preview-actions">
+              <button id="btnSaveSingle" class="btn btn-primary btn-block">
+                💾 ذخیره همین امضا
+              </button>
+              <button id="btnDeleteBox" class="btn btn-danger btn-block">
+                🗑️ حذف این کادر
+              </button>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

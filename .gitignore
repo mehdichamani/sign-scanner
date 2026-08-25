@@ -1,0 +1,22 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Environments & IDEs
+.venv/
+venv/
+env/
+.env
+.idea/
+.vscode/
+
+# Project Outputs & Temp files
+data/*
+output/*
+scans/*
+
+# Operating System Files
+.DS_Store
+Thumbs.db
