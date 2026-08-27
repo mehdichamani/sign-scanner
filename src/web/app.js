@@ -6,7 +6,7 @@
 // Application State
 const state = {
   // Navigation
-  activeModule: 'extractor', // 'extractor' | 'generator'
+  activeModule: 'extractor', // 'extractor' | 'generator' | 'gallery'
 
   // Generator State
   employees: [],
@@ -32,7 +32,12 @@ const state = {
   dragStartPos: null,
   boxStartRect: null,
   previewDebounceTimer: null,
-  activeTab: 'trans' // 'trans' | 'raw'
+  activeTab: 'trans', // 'trans' | 'raw'
+
+  // Gallery State
+  signatures: [],
+  galleryFilter: 'all', // 'all' | 'matched' | 'unmatched'
+  gallerySearch: ''
 };
 
 // DOM Elements
@@ -40,8 +45,11 @@ const elements = {
   // Navigation Tabs
   navTabGenerate: document.getElementById('navTabGenerate'),
   navTabExtract: document.getElementById('navTabExtract'),
+  navTabGallery: document.getElementById('navTabGallery'),
+  galleryBadge: document.getElementById('galleryBadge'),
   viewGenerator: document.getElementById('view-generator'),
   viewExtractor: document.getElementById('view-extractor'),
+  viewGallery: document.getElementById('view-gallery'),
   extractorHeaderActions: document.getElementById('extractorHeaderActions'),
 
   // Generator Elements
@@ -67,6 +75,7 @@ const elements = {
   detectMethodSelect: document.getElementById('detectMethodSelect'),
   btnReloadScans: document.getElementById('btnReloadScans'),
   btnDetect: document.getElementById('btnDetect'),
+  btnOpenBatchModal: document.getElementById('btnOpenBatchModal'),
   btnSaveAll: document.getElementById('btnSaveAll'),
   btnAddBox: document.getElementById('btnAddBox'),
   itemsContainer: document.getElementById('itemsContainer'),
@@ -98,6 +107,35 @@ const elements = {
   btnApplyAllThreshold: document.getElementById('btnApplyAllThreshold'),
   btnSaveSingle: document.getElementById('btnSaveSingle'),
   btnDeleteBox: document.getElementById('btnDeleteBox'),
+
+  // Gallery Elements
+  gallerySearchInput: document.getElementById('gallerySearchInput'),
+  galleryFilterBtns: document.querySelectorAll('.gallery-filter-btn'),
+  countFilterAll: document.getElementById('countFilterAll'),
+  countFilterMatched: document.getElementById('countFilterMatched'),
+  countFilterUnmatched: document.getElementById('countFilterUnmatched'),
+  btnRefreshGallery: document.getElementById('btnRefreshGallery'),
+  btnDownloadAllZip: document.getElementById('btnDownloadAllZip'),
+  statTotalSignatures: document.getElementById('statTotalSignatures'),
+  statMatchedEmployees: document.getElementById('statMatchedEmployees'),
+  statMissingSignatures: document.getElementById('statMissingSignatures'),
+  statCoveragePercent: document.getElementById('statCoveragePercent'),
+  galleryCardsGrid: document.getElementById('galleryCardsGrid'),
+
+  // Batch Modal Elements
+  batchModal: document.getElementById('batchModal'),
+  btnCloseBatchModal: document.getElementById('btnCloseBatchModal'),
+  btnCancelBatch: document.getElementById('btnCancelBatch'),
+  btnStartBatch: document.getElementById('btnStartBatch'),
+  batchMethodSelect: document.getElementById('batchMethodSelect'),
+  batchFilesCount: document.getElementById('batchFilesCount'),
+  batchFilesList: document.getElementById('batchFilesList'),
+  batchProgressArea: document.getElementById('batchProgressArea'),
+  batchProgressBar: document.getElementById('batchProgressBar'),
+  batchStatusText: document.getElementById('batchStatusText'),
+  batchProgressPercent: document.getElementById('batchProgressPercent'),
+  batchResultsList: document.getElementById('batchResultsList'),
+
   toastContainer: document.getElementById('toastContainer')
 };
 
@@ -121,27 +159,29 @@ function setStatus(msg) {
 /* ================= NAVIGATION TABS ================= */
 function switchModule(target) {
   state.activeModule = target;
+  
+  elements.navTabGenerate.classList.toggle('active', target === 'generator');
+  elements.navTabExtract.classList.toggle('active', target === 'extractor');
+  elements.navTabGallery.classList.toggle('active', target === 'gallery');
+
+  elements.viewGenerator.style.display = target === 'generator' ? 'block' : 'none';
+  elements.viewExtractor.style.display = target === 'extractor' ? 'flex' : 'none';
+  elements.viewGallery.style.display = target === 'gallery' ? 'block' : 'none';
+
+  elements.extractorHeaderActions.style.display = target === 'extractor' ? 'flex' : 'none';
+
   if (target === 'generator') {
-    elements.navTabGenerate.classList.add('active');
-    elements.navTabExtract.classList.remove('active');
-    elements.viewGenerator.style.display = 'block';
-    elements.viewExtractor.style.display = 'none';
-    elements.extractorHeaderActions.style.display = 'none';
-    if (state.employees.length === 0) {
-      fetchEmployeesData();
-    }
-  } else {
-    elements.navTabExtract.classList.add('active');
-    elements.navTabGenerate.classList.remove('active');
-    elements.viewExtractor.style.display = 'flex';
-    elements.viewGenerator.style.display = 'none';
-    elements.extractorHeaderActions.style.display = 'flex';
+    if (state.employees.length === 0) fetchEmployeesData();
+  } else if (target === 'extractor') {
     setTimeout(resizeCanvas, 50);
+  } else if (target === 'gallery') {
+    fetchSignaturesGallery();
   }
 }
 
 elements.navTabGenerate.addEventListener('click', () => switchModule('generator'));
 elements.navTabExtract.addEventListener('click', () => switchModule('extractor'));
+elements.navTabGallery.addEventListener('click', () => switchModule('gallery'));
 
 /* ================= MODULE 1: PDF GENERATOR LOGIC ================= */
 async function fetchEmployeesData() {
@@ -980,6 +1020,7 @@ elements.btnSaveAll.addEventListener('click', async () => {
     const data = await res.json();
     if (data.success) {
       showToast(`🎉 تعداد ${data.savedCount} فایل PNG شفاف در مسیر خروجی ذخیره شد!`, 'success');
+      updateGalleryBadge();
     } else {
       showToast(data.error || 'خطا در ذخیره فایل‌ها', 'error');
     }
@@ -988,6 +1029,374 @@ elements.btnSaveAll.addEventListener('click', async () => {
   }
 });
 
+/* ================= BATCH PROCESSING CONTROLLER ================= */
+function openBatchModal() {
+  if (elements.detectMethodSelect && elements.batchMethodSelect) {
+    elements.batchMethodSelect.value = elements.detectMethodSelect.value;
+  }
+
+  elements.batchFilesCount.textContent = `${state.scans.length.toLocaleString('fa-IR')} برگه`;
+  elements.batchFilesList.innerHTML = '';
+  
+  if (state.scans.length === 0) {
+    elements.batchFilesList.innerHTML = '<span class="dim-text">هیچ فایلی در پوشه scans یافت نشد.</span>';
+  } else {
+    state.scans.forEach((s) => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.innerHTML = `<span>📄</span> ${s.name}`;
+      elements.batchFilesList.appendChild(chip);
+    });
+  }
+
+  // Reset progress
+  elements.batchProgressArea.style.display = 'none';
+  elements.batchProgressBar.style.width = '0%';
+  elements.batchResultsList.innerHTML = '';
+  elements.btnStartBatch.disabled = false;
+  elements.btnStartBatch.innerHTML = '<span class="btn-icon">⚡</span> شروع پردازش گروهی';
+
+  elements.batchModal.style.display = 'flex';
+}
+
+function closeBatchModal() {
+  elements.batchModal.style.display = 'none';
+}
+
+elements.btnOpenBatchModal.addEventListener('click', openBatchModal);
+elements.btnCloseBatchModal.addEventListener('click', closeBatchModal);
+elements.btnCancelBatch.addEventListener('click', closeBatchModal);
+
+// Close modal on clicking backdrop
+elements.batchModal.addEventListener('click', (e) => {
+  if (e.target === elements.batchModal) {
+    closeBatchModal();
+  }
+});
+
+elements.btnStartBatch.addEventListener('click', async () => {
+  if (state.scans.length === 0) {
+    showToast('هیچ فایلی برای پردازش گروهی وجود ندارد', 'error');
+    return;
+  }
+
+  const method = elements.batchMethodSelect ? elements.batchMethodSelect.value : 'smart';
+  const methodLabel = elements.batchMethodSelect ? elements.batchMethodSelect.options[elements.batchMethodSelect.selectedIndex].text : '';
+
+  elements.btnStartBatch.disabled = true;
+  elements.btnStartBatch.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;margin-left:6px;"></div> در حال پردازش...';
+  elements.batchProgressArea.style.display = 'flex';
+  elements.batchProgressBar.style.width = '30%';
+  elements.batchStatusText.textContent = `در حال آنالیز و استخراج گروهی با ${methodLabel}...`;
+  elements.batchProgressPercent.textContent = '۳۰٪';
+  elements.batchResultsList.innerHTML = '<div class="batch-result-item">در حال پردازش تمام تصاویر... لطفاً شکیبا باشید.</div>';
+
+  try {
+    const res = await fetch('/api/batch-detect-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filenames: state.scans.map((s) => s.name),
+        method: method,
+        threshold: parseInt(elements.rangeThreshold ? elements.rangeThreshold.value : 200),
+        padding: parseInt(elements.rangePadding ? elements.rangePadding.value : 6)
+      })
+    });
+    const data = await res.json();
+
+    elements.batchProgressBar.style.width = '100%';
+    elements.batchProgressPercent.textContent = '۱۰۰٪';
+
+    if (data.success) {
+      elements.batchStatusText.textContent = `پردازش پایان یافت: ${data.totalSignatures} امضا در ${data.elapsedSec} ثانیه استخراج شد!`;
+      elements.batchResultsList.innerHTML = '';
+
+      data.sheets.forEach((sheet) => {
+        const itemEl = document.createElement('div');
+        itemEl.className = `batch-result-item ${sheet.status === 'success' ? 'success' : 'error'}`;
+        if (sheet.status === 'success') {
+          itemEl.innerHTML = `
+            <span><strong>${sheet.filename}</strong>: ${sheet.saved} امضا استخراج شد (${sheet.elapsedMs}ms)</span>
+            <span class="badge badge-auto">${sheet.codes.length > 0 ? sheet.codes.slice(0, 3).join(', ') + (sheet.codes.length > 3 ? '...' : '') : 'بدون امضا'}</span>
+          `;
+        } else {
+          itemEl.innerHTML = `
+            <span><strong>${sheet.filename}</strong>: ${sheet.error || 'خطا'}</span>
+            <span class="badge badge-danger">ناموفق</span>
+          `;
+        }
+        elements.batchResultsList.appendChild(itemEl);
+      });
+
+      showToast(`🎉 پردازش گروهی کامل شد! ${data.totalSignatures} امضا ذخیره گردید.`, 'success');
+      updateGalleryBadge();
+      elements.btnStartBatch.innerHTML = '✔ انجام شد';
+      elements.btnCancelBatch.textContent = 'مشاهده گالری امضاها';
+      elements.btnCancelBatch.onclick = () => {
+        closeBatchModal();
+        switchModule('gallery');
+      };
+    } else {
+      elements.batchStatusText.textContent = data.error || 'خطا در پردازش گروهی';
+      elements.batchProgressBar.style.background = 'var(--danger)';
+      showToast(data.error || 'خطا در پردازش گروهی', 'error');
+    }
+  } catch (err) {
+    showToast('خطا در برقراری ارتباط با سرور', 'error');
+    elements.batchStatusText.textContent = 'خطا در شبکه یا سرور';
+  } finally {
+    elements.btnStartBatch.disabled = false;
+  }
+});
+
+/* ================= MODULE 3: SIGNATURES GALLERY LOGIC ================= */
+async function updateGalleryBadge() {
+  try {
+    const res = await fetch('/api/signatures');
+    const data = await res.json();
+    if (data.signatures) {
+      state.signatures = data.signatures;
+      if (elements.galleryBadge) {
+        elements.galleryBadge.textContent = data.signatures.length.toLocaleString('fa-IR');
+      }
+    }
+  } catch (e) {
+    // silent
+  }
+}
+
+async function fetchSignaturesGallery() {
+  setStatus('در حال بارگذاری گالری امضاها...');
+  try {
+    const res = await fetch('/api/signatures');
+    const data = await res.json();
+    state.signatures = data.signatures || [];
+    renderGallery();
+    setStatus(`گالری بروزرسانی شد: ${state.signatures.length} امضا`);
+  } catch (err) {
+    showToast('خطا در دریافت لیست امضاها', 'error');
+  }
+}
+
+function renderGallery() {
+  const grid = elements.galleryCardsGrid;
+  grid.innerHTML = '';
+
+  const sigMap = new Map();
+  state.signatures.forEach((s) => sigMap.set(s.empCode, s));
+
+  const empMap = new Map();
+  state.employees.forEach((e) => empMap.set(e.empCode, e));
+
+  // Compute Stats
+  const totalSigs = state.signatures.length;
+  let matchedCount = 0;
+  state.signatures.forEach((s) => {
+    if (empMap.has(s.empCode)) matchedCount++;
+  });
+
+  const totalEmployees = state.employees.length;
+  const missingCount = Math.max(0, totalEmployees - matchedCount);
+  const coverage = totalEmployees > 0 ? Math.round((matchedCount / totalEmployees) * 100) : 100;
+
+  elements.statTotalSignatures.textContent = totalSigs.toLocaleString('fa-IR');
+  elements.statMatchedEmployees.textContent = matchedCount.toLocaleString('fa-IR');
+  elements.statMissingSignatures.textContent = missingCount.toLocaleString('fa-IR');
+  elements.statCoveragePercent.textContent = `${coverage.toLocaleString('fa-IR')}٪`;
+
+  if (elements.galleryBadge) {
+    elements.galleryBadge.textContent = totalSigs.toLocaleString('fa-IR');
+  }
+
+  // Filter Counts
+  elements.countFilterAll.textContent = totalSigs;
+  elements.countFilterMatched.textContent = matchedCount;
+  elements.countFilterUnmatched.textContent = missingCount;
+
+  // Build items list based on active filter
+  let displayItems = [];
+
+  if (state.galleryFilter === 'all') {
+    displayItems = state.signatures.map((s) => ({
+      type: 'signature',
+      empCode: s.empCode,
+      filename: s.name,
+      size: s.size,
+      modified: s.modified,
+      employee: empMap.get(s.empCode)
+    }));
+  } else if (state.galleryFilter === 'matched') {
+    displayItems = state.signatures
+      .filter((s) => empMap.has(s.empCode))
+      .map((s) => ({
+        type: 'signature',
+        empCode: s.empCode,
+        filename: s.name,
+        size: s.size,
+        modified: s.modified,
+        employee: empMap.get(s.empCode)
+      }));
+  } else if (state.galleryFilter === 'unmatched') {
+    displayItems = state.employees
+      .filter((e) => !sigMap.has(e.empCode))
+      .map((e) => ({
+        type: 'missing',
+        empCode: e.empCode,
+        employee: e
+      }));
+  }
+
+  // Apply Search
+  const query = state.gallerySearch.toLowerCase().trim();
+  if (query) {
+    displayItems = displayItems.filter((item) => {
+      const codeMatch = item.empCode.toLowerCase().includes(query);
+      const nameMatch = item.employee?.name?.toLowerCase().includes(query);
+      const deptMatch = item.employee?.dept?.toLowerCase().includes(query);
+      return codeMatch || nameMatch || deptMatch;
+    });
+  }
+
+  if (displayItems.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column: 1 / -1; padding: 40px;">
+        <p>هیچ موردی مطابق فیلتر یا جستجوی شما یافت نشد.</p>
+      </div>`;
+    return;
+  }
+
+  displayItems.forEach((item) => {
+    if (item.type === 'signature') {
+      const card = document.createElement('div');
+      card.className = 'sig-card';
+      const empName = item.employee ? item.employee.name : 'بدون نام در لیست';
+      const deptName = item.employee ? item.employee.dept : 'عمومی';
+      const sizeKb = (item.size / 1024).toFixed(1);
+
+      card.innerHTML = `
+        <div class="sig-card-preview checkerboard">
+          <img src="/api/signature-image?file=${encodeURIComponent(item.filename)}&t=${Date.now()}" alt="امضا ${item.empCode}" loading="lazy" />
+        </div>
+        <div class="sig-card-body">
+          <div class="sig-card-header">
+            <span class="sig-code-badge">${item.empCode}</span>
+            <span class="badge ${item.employee ? 'badge-auto' : 'badge-manual'}">${item.employee ? 'تطبیق داده شد' : 'کد آزاد'}</span>
+          </div>
+          <div class="sig-emp-info">👤 ${empName}</div>
+          <div class="sig-dept-info">🏢 ${deptName}</div>
+          <div class="sig-card-meta">
+            <span>حجم: ${sizeKb} KB</span>
+            <span>فایل: ${item.filename}</span>
+          </div>
+        </div>
+        <div class="sig-card-actions">
+          <button class="btn btn-outline btn-xs btn-rename-sig" data-code="${item.empCode}" title="ویرایش کد پرسنلی">✏️ کد</button>
+          <a href="/api/signature-image?file=${encodeURIComponent(item.filename)}" download="${item.filename}" class="btn btn-secondary btn-xs" title="دانلود این فایل PNG">📥 دانلود</a>
+          <button class="btn btn-danger btn-xs btn-delete-sig" data-filename="${item.filename}" data-code="${item.empCode}" title="حذف این امضا">🗑️</button>
+        </div>
+      `;
+
+      // Rename Handler
+      card.querySelector('.btn-rename-sig').addEventListener('click', () => {
+        renameSignaturePrompt(item.empCode);
+      });
+
+      // Delete Handler
+      card.querySelector('.btn-delete-sig').addEventListener('click', () => {
+        deleteSignaturePrompt(item.filename, item.empCode);
+      });
+
+      grid.appendChild(card);
+    } else {
+      // Missing signature item
+      const card = document.createElement('div');
+      card.className = 'sig-card sig-card-missing';
+      card.innerHTML = `
+        <div class="sig-card-preview">
+          ⚠️ امضای این پرسنل هنوز اسکن نشده است
+        </div>
+        <div class="sig-card-body">
+          <div class="sig-card-header">
+            <span class="sig-code-badge" style="color: #fbbf24; border-color: rgba(251, 191, 36, 0.3);">${item.empCode}</span>
+            <span class="badge badge-manual">در انتظار اسکن</span>
+          </div>
+          <div class="sig-emp-info">👤 ${item.employee.name}</div>
+          <div class="sig-dept-info">🏢 ${item.employee.dept}</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+  });
+}
+
+// Gallery Filter Tab clicks
+elements.galleryFilterBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    elements.galleryFilterBtns.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.galleryFilter = btn.dataset.filter;
+    renderGallery();
+  });
+});
+
+// Gallery Search Input
+elements.gallerySearchInput.addEventListener('input', (e) => {
+  state.gallerySearch = e.target.value;
+  renderGallery();
+});
+
+// Gallery Refresh Button
+elements.btnRefreshGallery.addEventListener('click', () => {
+  fetchSignaturesGallery();
+  showToast('گالری بروزرسانی شد', 'info');
+});
+
+// Rename Signature Function
+async function renameSignaturePrompt(oldCode) {
+  const newCode = prompt(`کد پرسنلی جدید را برای امضای «${oldCode}» وارد کنید:`, oldCode);
+  if (!newCode || newCode.trim() === oldCode) return;
+
+  try {
+    const res = await fetch('/api/rename-signature', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldCode: oldCode, newCode: newCode.trim() })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`کد پرسنلی با موفقیت به ${data.newCode} تغییر یافت`, 'success');
+      fetchSignaturesGallery();
+    } else {
+      showToast(data.error || 'خطا در تغییر نام امضا', 'error');
+    }
+  } catch (err) {
+    showToast('خطا در ارتباط با سرور', 'error');
+  }
+}
+
+// Delete Signature Function
+async function deleteSignaturePrompt(filename, code) {
+  if (!confirm(`آیا از حذف امضای کد پرسنلی «${code}» مطمئن هستید؟`)) return;
+
+  try {
+    const res = await fetch('/api/delete-signature', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filename })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`امضای ${code} با موفقیت حذف شد`, 'info');
+      fetchSignaturesGallery();
+    } else {
+      showToast(data.error || 'خطا در حذف امضا', 'error');
+    }
+  } catch (err) {
+    showToast('خطا در ارتباط با سرور', 'error');
+  }
+}
+
 // Initial Startup
 fetchScans();
 fetchEmployeesData();
+updateGalleryBadge();

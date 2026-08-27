@@ -27,30 +27,34 @@
           <span class="tab-icon">📄</span> تولید برگه امضا (PDF)
         </button>
         <button id="navTabExtract" class="nav-tab-btn active" data-target="view-extractor">
-          <span class="tab-icon">🎯</span> استخراج و برش هوشمند امضا
+          <span class="tab-icon">🎯</span> استخراج و برش امضا
+        </button>
+        <button id="navTabGallery" class="nav-tab-btn" data-target="view-gallery">
+          <span class="tab-icon">🖼️</span> مرور و مدیریت امضاها
+          <span id="galleryBadge" class="nav-badge">۰</span>
         </button>
       </nav>
 
       <div class="header-actions" id="extractorHeaderActions">
         <!-- Scan Selector -->
         <div class="select-wrapper">
-          <label for="scanSelect">برگه اسکن:</label>
+          <label for="scanSelect">برگه:</label>
           <select id="scanSelect" class="form-select">
-            <option value="">در حال بارگذاری اسکن‌ها...</option>
+            <option value="">در حال بارگذاری...</option>
           </select>
         </div>
 
         <!-- Detection Method / Pass Selector -->
         <div class="select-wrapper">
-          <label for="detectMethodSelect" title="انتخاب روش و اولویت تشخیص">الگوریتم تشخیص:</label>
+          <label for="detectMethodSelect" title="انتخاب روش تشخیص">روش:</label>
           <select id="detectMethodSelect" class="form-select method-select">
-            <option value="smart" selected>⚡ اولویت هوشمند ترکیبی (پیشنهادی - ۱۰۰٪ سریع و دقیق)</option>
-            <option value="pass1_scale_half">۱️⃣ اولویت ۱: کوچک‌شده 0.5x (فوق‌العاده سریع ~100ms)</option>
-            <option value="pass2_direct">۲️⃣ اولویت ۲: مستقیم Grayscale 1.0x (~300ms)</option>
-            <option value="pass3_threshold">۳️⃣ اولویت ۳: با ۳ آستانه Binarize (~800ms)</option>
-            <option value="pass4_multi_scale">۴️⃣ اولویت ۴: تغییر مقیاس ۴ مرحله‌ای (~1800ms)</option>
-            <option value="pass5_opencv">۵️⃣ اولویت ۵: موتور OpenCV Multi-Scale (~900ms)</option>
-            <option value="all_passes">🔍 ترکیب تمام روش‌ها (جامع و سنگین)</option>
+            <option value="smart" selected>⚡ اولویت هوشمند ترکیبی (پیشنهادی)</option>
+            <option value="pass1_scale_half">۱️⃣ پاس ۱: نیم مقیاس 0.5x (~100ms)</option>
+            <option value="pass2_direct">۲️⃣ پاس ۲: مستقیم 1.0x (~300ms)</option>
+            <option value="pass3_threshold">۳️⃣ پاس ۳: آستانه‌بندی (~800ms)</option>
+            <option value="pass4_multi_scale">۴️⃣ پاس ۴: چند مقیاسی (~1800ms)</option>
+            <option value="pass5_opencv">۵️⃣ پاس ۵: OpenCV Multi-Scale (~900ms)</option>
+            <option value="all_passes">🔍 ترکیب تمام روش‌ها</option>
           </select>
         </div>
 
@@ -58,12 +62,16 @@
           🔄
         </button>
 
-        <button id="btnDetect" class="btn btn-primary">
-          <span class="btn-icon">⚡</span> تشخیص خودکار
+        <button id="btnDetect" class="btn btn-primary" title="تشخیص خودکار کادرهای برگه جاری">
+          <span class="btn-icon">⚡</span> تشخیص برگه
         </button>
 
-        <button id="btnSaveAll" class="btn btn-success">
-          <span class="btn-icon">💾</span> ذخیره تمام امضاها
+        <button id="btnOpenBatchModal" class="btn btn-warning" title="پردازش دسته‌ای تمام برگه‌ها">
+          <span class="btn-icon">🚀</span> پردازش گروهی
+        </button>
+
+        <button id="btnSaveAll" class="btn btn-success" title="ذخیره تمام کادرهای برگه جاری">
+          <span class="btn-icon">💾</span> ذخیره برگه
         </button>
       </div>
     </header>
@@ -331,7 +339,131 @@
           </div>
         </aside>
       </section>
+      
+      <!-- ================= MODULE 3: SIGNATURES REVIEW GALLERY ================= -->
+      <section id="view-gallery" class="module-view gallery-module" style="display: none;">
+        <div class="gallery-container">
+          <!-- Gallery Top Control Toolbar -->
+          <div class="gallery-toolbar card">
+            <div class="gallery-filter-group">
+              <div class="search-input-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="gallerySearchInput" class="form-input" placeholder="جستجو بر اساس کد پرسنلی یا نام..." />
+              </div>
+              <div class="gallery-filter-tabs">
+                <button class="gallery-filter-btn active" data-filter="all">همه امضاها (<span id="countFilterAll">0</span>)</button>
+                <button class="gallery-filter-btn" data-filter="matched">تطبیق با لیست پرسنل (<span id="countFilterMatched">0</span>)</button>
+                <button class="gallery-filter-btn" data-filter="unmatched">پرسنل بدون امضا (<span id="countFilterUnmatched">0</span>)</button>
+              </div>
+            </div>
 
+            <div class="gallery-actions">
+              <button id="btnRefreshGallery" class="btn btn-secondary" title="تازه‌سازی لیست">
+                🔄 بروزرسانی
+              </button>
+              <a id="btnDownloadAllZip" href="/api/download-all-signatures-zip" target="_blank" class="btn btn-primary" title="دانلود تمام امضاهای استخراج‌شده به صورت فایل فشرده ZIP">
+                📦 دانلود یکجای تمام امضاها (ZIP)
+              </a>
+            </div>
+          </div>
+
+          <!-- Gallery Stats Overview -->
+          <div class="gallery-stats-grid">
+            <div class="stat-card">
+              <span class="stat-num text-primary" id="statTotalSignatures">۰</span>
+              <span class="stat-title">کل امضاهای استخراج‌شده</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num text-success" id="statMatchedEmployees">۰</span>
+              <span class="stat-title">پرسنل دارای امضا</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num text-warning" id="statMissingSignatures">۰</span>
+              <span class="stat-title">پرسنل فاقد امضا</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-num text-info" id="statCoveragePercent">۰٪</span>
+              <span class="stat-title">درصد پوشش امضاها</span>
+            </div>
+          </div>
+
+          <!-- Gallery Grid Content -->
+          <div class="gallery-grid-area" id="galleryGridArea">
+            <div class="gallery-grid" id="galleryCardsGrid">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ================= BATCH PROCESSING MODAL ================= -->
+  <div id="batchModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="icon">🚀</span>
+          <h3>پردازش خودکار و گروهی کلیه اسکن‌ها</h3>
+        </div>
+        <button id="btnCloseBatchModal" class="btn-close-modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-desc">
+          تمام برگه‌های اسکن‌شده در پوشه <code>scans/</code> خوانده شده، با الگوریتم انتخابی تحلیل و کلیه امضاها به طور خودکار استخراج و در پوشه خروجی ذخیره می‌شوند.
+        </p>
+
+        <!-- Batch Settings -->
+        <div class="batch-settings-card">
+          <div class="form-group-row">
+            <label for="batchMethodSelect">الگوریتم انتخابی برای تمام برگه‌ها:</label>
+            <select id="batchMethodSelect" class="form-select method-select">
+              <option value="smart" selected>⚡ اولویت هوشمند ترکیبی (پیشنهادی - ۱۰۰٪ سریع و مطمئن)</option>
+              <option value="pass1_scale_half">۱️⃣ اولویت ۱: کوچک‌شده 0.5x (بسیار سریع)</option>
+              <option value="pass2_direct">۲️⃣ اولویت ۲: مستقیم Grayscale 1.0x</option>
+              <option value="pass3_threshold">۳️⃣ اولویت ۳: با ۳ آستانه Binarize</option>
+              <option value="pass4_multi_scale">۴️⃣ اولویت ۴: تغییر مقیاس ۴ مرحله‌ای</option>
+              <option value="pass5_opencv">۵️⃣ اولویت ۵: موتور OpenCV Multi-Scale</option>
+              <option value="all_passes">🔍 ترکیب تمام روش‌ها (جامع و سنگین)</option>
+            </select>
+          </div>
+
+          <div class="batch-files-preview">
+            <div class="preview-header">
+              <span>برگه‌های آماده پردازش:</span>
+              <strong id="batchFilesCount">۰ برگه</strong>
+            </div>
+            <div id="batchFilesList" class="batch-files-chips">
+              <!-- Render list of filenames -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="batchProgressArea" style="display: none;" class="batch-progress-area">
+          <div class="progress-bar-wrap">
+            <div id="batchProgressBar" class="progress-bar" style="width: 0%;"></div>
+          </div>
+          <div class="progress-status-text">
+            <span id="batchStatusText">در حال پردازش...</span>
+            <span id="batchProgressPercent">۰٪</span>
+          </div>
+
+          <!-- Live Log / Results Table -->
+          <div class="batch-results-list" id="batchResultsList">
+            <!-- Results item -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnCancelBatch" class="btn btn-secondary">بستن</button>
+        <button id="btnStartBatch" class="btn btn-primary btn-lg">
+          <span class="btn-icon">⚡</span> شروع پردازش گروهی
+        </button>
+      </div>
     </div>
   </div>
 

@@ -4,6 +4,9 @@ import sys
 import json
 import base64
 import urllib.parse
+import zipfile
+import io
+import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 import pandas as pd
@@ -70,12 +73,38 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
             sig_files = []
             if SIGNATURES_OUTPUT_DIR.exists():
                 for f in sorted(SIGNATURES_OUTPUT_DIR.glob("*.png")):
+                    st = f.stat()
                     sig_files.append({
                         "name": f.name,
                         "empCode": f.stem,
-                        "size": f.stat().st_size
+                        "size": st.st_size,
+                        "modified": st.st_mtime
                     })
             self._send_json({"signatures": sig_files, "outputDir": str(SIGNATURES_OUTPUT_DIR.resolve())})
+            return
+
+        elif path == "/api/download-all-signatures-zip":
+            if not SIGNATURES_OUTPUT_DIR.exists():
+                self.send_error(404, "No signatures directory")
+                return
+
+            sig_files = list(sorted(SIGNATURES_OUTPUT_DIR.glob("*.png")))
+            if not sig_files:
+                self.send_error(404, "No signatures found")
+                return
+
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for f in sig_files:
+                    zf.write(f, arcname=f.name)
+
+            content = zip_buffer.getvalue()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Content-Disposition", 'attachment; filename="extracted_signatures.zip"')
+            self.end_headers()
+            self.wfile.write(content)
             return
 
         elif path == "/api/scan-image":
@@ -195,7 +224,6 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
                 self._send_json({"error": "عدم امکان باز کردن فایل تصویر"}, 500)
                 return
 
-            import time
             t_start = time.perf_counter()
 
             h_img, w_img = img.shape[:2]
@@ -441,6 +469,155 @@ class SignScannerHTTPHandler(SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"error": f"خطا در پردازش فایل CSV: {str(e)}"}, 400)
+            return
+
+        elif path == "/api/batch-detect-extract":
+            filenames = req_json.get("filenames", [])
+            method = req_json.get("method", "smart")
+            thresh_val = int(req_json.get("threshold", 200))
+            pad = int(req_json.get("padding", 6))
+
+            if not filenames:
+                # Process all files if not specified
+                valid_exts = (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp")
+                if SCANS_DIR.exists():
+                    filenames = [f for f in sorted(os.listdir(SCANS_DIR)) if f.lower().endswith(valid_exts)]
+
+            if not filenames:
+                self._send_json({"error": "هیچ فایل اسکنی برای پردازش یافت نشد."}, 400)
+                return
+
+            out_dir = SIGNATURES_OUTPUT_DIR
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            t_batch_start = time.perf_counter()
+            processed_sheets = []
+            total_signatures_extracted = 0
+
+            for fname in filenames:
+                img_path = SCANS_DIR / fname
+                if not img_path.exists():
+                    processed_sheets.append({
+                        "filename": fname,
+                        "status": "error",
+                        "error": "فایل یافت نشد",
+                        "qrFound": 0,
+                        "saved": 0,
+                        "codes": []
+                    })
+                    continue
+
+                img = cv2.imread(str(img_path))
+                if img is None:
+                    processed_sheets.append({
+                        "filename": fname,
+                        "status": "error",
+                        "error": "خطا در بارگذاری تصویر",
+                        "qrFound": 0,
+                        "saved": 0,
+                        "codes": []
+                    })
+                    continue
+
+                t_sheet_start = time.perf_counter()
+                h_img, w_img = img.shape[:2]
+
+                qr_list = extract_qr_codes(img, method=method)
+                qr_list.sort(key=lambda item: (round(item["qr_rect"][1] / 200.0) * 200, item["qr_rect"][0]))
+
+                sheet_extracted_codes = []
+                for q in qr_list:
+                    emp_code = q["code"].strip()
+                    if not emp_code:
+                        continue
+
+                    bx, by, bw, bh = get_box_for_qr(q["qr_rect"], img.shape)
+                    crop_x1 = max(0, bx + pad)
+                    crop_y1 = max(0, by + pad)
+                    crop_x2 = min(w_img, bx + bw - pad)
+                    crop_y2 = min(h_img, by + bh - pad)
+
+                    if crop_x2 <= crop_x1 or crop_y2 <= crop_y1:
+                        continue
+
+                    sig_crop = img[crop_y1:crop_y2, crop_x1:crop_x2]
+                    if sig_crop.size == 0 or sig_crop.shape[0] < 20 or sig_crop.shape[1] < 20:
+                        continue
+
+                    transparent_sig = remove_background(sig_crop, thresh_val=thresh_val)
+                    safe_code = "".join(c for c in emp_code if c.isalnum() or c in ("-", "_")).strip() or "signature"
+                    out_file = out_dir / f"{safe_code}.png"
+                    cv2.imwrite(str(out_file), transparent_sig)
+                    sheet_extracted_codes.append(safe_code)
+
+                elapsed_sheet_ms = round((time.perf_counter() - t_sheet_start) * 1000, 1)
+                total_signatures_extracted += len(sheet_extracted_codes)
+
+                processed_sheets.append({
+                    "filename": fname,
+                    "status": "success",
+                    "elapsedMs": elapsed_sheet_ms,
+                    "qrFound": len(qr_list),
+                    "saved": len(sheet_extracted_codes),
+                    "codes": sheet_extracted_codes
+                })
+
+            total_elapsed_sec = round(time.perf_counter() - t_batch_start, 2)
+
+            self._send_json({
+                "success": True,
+                "method": method,
+                "totalSheets": len(processed_sheets),
+                "totalSignatures": total_signatures_extracted,
+                "elapsedSec": total_elapsed_sec,
+                "sheets": processed_sheets,
+                "outputDir": str(out_dir.resolve())
+            })
+            return
+
+        elif path == "/api/delete-signature":
+            filename = req_json.get("filename")
+            if not filename:
+                self._send_json({"error": "نام فایل امضا مشخص نشده است"}, 400)
+                return
+
+            safe_path = (SIGNATURES_OUTPUT_DIR / filename).resolve()
+            if not str(safe_path).startswith(str(SIGNATURES_OUTPUT_DIR.resolve())) or not safe_path.exists():
+                self._send_json({"error": "فایل امضا پیدا نشد"}, 404)
+                return
+
+            try:
+                os.remove(safe_path)
+                self._send_json({"success": True, "deleted": filename})
+            except Exception as e:
+                self._send_json({"error": f"خطا در حذف فایل: {str(e)}"}, 500)
+            return
+
+        elif path == "/api/rename-signature":
+            old_code = req_json.get("oldCode", "").strip()
+            new_code = req_json.get("newCode", "").strip()
+
+            if not old_code or not new_code:
+                self._send_json({"error": "کدهای پرسنلی قدیم و جدید الزامی هستند"}, 400)
+                return
+
+            old_path = (SIGNATURES_OUTPUT_DIR / f"{old_code}.png").resolve()
+            safe_new_code = "".join(c for c in new_code if c.isalnum() or c in ("-", "_")).strip()
+            new_path = (SIGNATURES_OUTPUT_DIR / f"{safe_new_code}.png").resolve()
+
+            if not old_path.exists():
+                self._send_json({"error": "فایل امضای مورد نظر یافت نشد"}, 404)
+                return
+
+            if new_path.exists() and old_path != new_path:
+                self._send_json({"error": "امضایی با این کد پرسنلی از قبل وجود دارد"}, 400)
+                return
+
+            try:
+                os.rename(old_path, new_path)
+                self._send_json({"success": True, "oldCode": old_code, "newCode": safe_new_code, "filename": f"{safe_new_code}.png"})
+            except Exception as e:
+                self._send_json({"error": f"خطا در تغییر نام فایل: {str(e)}"}, 500)
             return
 
         self.send_error(404, "Endpoint not found")
