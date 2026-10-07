@@ -171,7 +171,8 @@ function switchModule(target) {
   elements.extractorHeaderActions.style.display = target === 'extractor' ? 'flex' : 'none';
 
   if (target === 'generator') {
-    if (state.employees.length === 0) fetchEmployeesData();
+    renderEmployeesTable();
+    updateGeneratorStats();
   } else if (target === 'extractor') {
     setTimeout(resizeCanvas, 50);
   } else if (target === 'gallery') {
@@ -364,11 +365,7 @@ elements.fileCsvInput.addEventListener('change', async (e) => {
   reader.readAsText(file);
 });
 
-// Reset Sample
-elements.btnResetSample.addEventListener('click', () => {
-  fetchEmployeesData();
-  showToast('داده‌های نمونه بازنشانی شدند', 'info');
-});
+
 
 // Generate PDF
 elements.btnGeneratePdf.addEventListener('click', async () => {
@@ -991,23 +988,24 @@ elements.btnSaveSingle.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`امضای ${item.empCode} با موفقیت در output/signatures ذخیره شد!`, 'success');
+      showToast(`امضای ${item.empCode} با موفقیت استخراج و ذخیره شد!`, 'success');
+      updateGalleryBadge();
     } else {
-      showToast(data.error || 'خطا در ذخیره امضا', 'error');
+      showToast(data.error || 'خطا در استخراج امضا', 'error');
     }
   } catch (err) {
     showToast('خطا در ارتباط با سرور', 'error');
   }
 });
 
-// Save All
+// Save All / Extract All for Sheet
 elements.btnSaveAll.addEventListener('click', async () => {
   if (state.items.length === 0 || !state.selectedScan) {
-    showToast('هیچ امضایی برای ذخیره وجود ندارد', 'error');
+    showToast('هیچ امضایی برای استخراج وجود ندارد. ابتدا تشخیص برگه را بزنید یا کادر رسم کنید.', 'error');
     return;
   }
 
-  showToast('در حال ذخیره و پردازش تمام امضاها...', 'info');
+  showToast('در حال استخراج امضاهای این برگه...', 'info');
   try {
     const res = await fetch('/api/save-signatures', {
       method: 'POST',
@@ -1019,13 +1017,13 @@ elements.btnSaveAll.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`🎉 تعداد ${data.savedCount} فایل PNG شفاف در مسیر خروجی ذخیره شد!`, 'success');
+      showToast(`🎉 تعداد ${data.savedCount} امضا از این برگه با موفقیت استخراج و ذخیره شد!`, 'success');
       updateGalleryBadge();
     } else {
-      showToast(data.error || 'خطا در ذخیره فایل‌ها', 'error');
+      showToast(data.error || 'خطا در استخراج امضاها', 'error');
     }
   } catch (err) {
-    showToast('خطا در ذخیره', 'error');
+    showToast('خطا در ارتباط با سرور هنگام استخراج', 'error');
   }
 });
 
